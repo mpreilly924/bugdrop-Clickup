@@ -34,7 +34,6 @@ import { installRadixDialogCompatibility } from './radix-compat';
 import { resolveAccentColor } from '../defaults';
 
 type FeedbackCategory = 'bug' | 'feature' | 'question';
-type CategoryLabelConfig = Partial<Record<FeedbackCategory, string | string[]>>;
 type FeedbackAttachment = {
   name: string;
   type: string;
@@ -43,6 +42,7 @@ type FeedbackAttachment = {
 };
 
 interface WidgetConfig {
+  // Stable local browser key; defaults to the host page's origin.
   repo: string;
   apiUrl: string;
   authTokenProvider?: BugDropAuthTokenProvider;
@@ -65,8 +65,6 @@ interface WidgetConfig {
   iconUrl?: string;
   // Custom trigger button label text; defaults to the active locale's triggerLabel
   label?: string;
-  // Optional mapping from built-in feedback categories to GitHub labels
-  categoryLabels?: CategoryLabelConfig;
   // Tier 1 styling customization
   font?: string; // 'inherit' to use host page font, or a custom font-family string
   radius?: string; // Border radius in px (e.g., '0', '8', '16')
@@ -319,52 +317,6 @@ function rememberComplexScreenshotSkip(config: WidgetConfig, formResult: Feedbac
   formResult.includeScreenshot = false;
 }
 
-function parseCategoryLabels(rawValue: string | undefined): CategoryLabelConfig | undefined {
-  if (!rawValue) return undefined;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawValue);
-  } catch (err) {
-    const detail = err instanceof Error ? `: ${err.message}` : '';
-    console.warn(
-      `[BugDrop] Invalid data-category-labels JSON${detail}. Using default GitHub labels.`
-    );
-    return undefined;
-  }
-
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    console.warn(
-      '[BugDrop] Invalid data-category-labels: expected a JSON object. Using default GitHub labels.'
-    );
-    return undefined;
-  }
-
-  // Validate per-category shape so misconfig surfaces in browser DevTools rather
-  // than only inside the issue body the operator may never read. The server
-  // re-validates regardless — this layer exists for operator feedback.
-  const knownCategories: FeedbackCategory[] = ['bug', 'feature', 'question'];
-  const result: CategoryLabelConfig = {};
-  for (const [key, value] of Object.entries(parsed)) {
-    if (!knownCategories.includes(key as FeedbackCategory)) {
-      console.warn(
-        `[BugDrop] Invalid data-category-labels: unknown category "${key}" (expected ${knownCategories.join(', ')}). Ignoring.`
-      );
-      continue;
-    }
-    if (typeof value === 'string') {
-      result[key as FeedbackCategory] = value;
-    } else if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
-      result[key as FeedbackCategory] = value;
-    } else {
-      console.warn(
-        `[BugDrop] Invalid data-category-labels: value for "${key}" must be a string or string array. Ignoring.`
-      );
-    }
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
 // Read config from script tag (fallback to src-based lookup for async/defer)
 const script = (document.currentScript ||
   document.querySelector('script[src*="bugdrop"][src*="widget"]')) as HTMLScriptElement;
@@ -417,7 +369,7 @@ if (rawShowIssueLink && rawShowIssueLink !== 'public' && rawShowIssueLink !== is
   );
 }
 const config: WidgetConfig = {
-  repo: script?.dataset.repo || '',
+  repo: script?.dataset.project || window.location.host,
   apiUrl: script?.src.replace(/\/widget(?:\.v[\d.]+)?\.js$/, '/api') || '',
   authTokenProvider: resolveAuthTokenProvider(script?.dataset.authTokenProvider),
   position: rawPosition === 'bottom-left' ? 'bottom-left' : 'bottom-right',
@@ -440,7 +392,6 @@ const config: WidgetConfig = {
   iconUrl: sanitizeUrl(script?.dataset.icon),
   // Custom trigger label
   label: script?.dataset.label || undefined,
-  categoryLabels: parseCategoryLabels(script?.dataset.categoryLabels),
   // Tier 1 styling customization
   font: sanitizeCssFontFamily(script?.dataset.font),
   radius: sanitizeNonNegativePixelValue(script?.dataset.radius)?.toString(),
@@ -479,16 +430,7 @@ setLocale(config.locale);
 
 startConsoleLogCapture();
 
-// Validate config
-if (!config.repo) {
-  console.error('[BugDrop] Missing data-repo attribute');
-} else if (!/^[^/]+\/[^/]+$/.test(config.repo)) {
-  console.error(
-    `[BugDrop] Invalid data-repo format "${config.repo}". Expected "owner/repo" (e.g., "octocat/hello-world").`
-  );
-} else {
-  initWidget(config);
-}
+initWidget(config);
 
 // Build the trigger button label text
 function getTriggerLabel(config: WidgetConfig): string {
@@ -1054,14 +996,14 @@ async function openFeedbackFlow(
   // Mark modal as open
   _isModalOpen = true;
 
-  // Check if app is installed
-  const { status: installStatus, appName } = await checkInstallation(config);
-  if (installStatus === 'not_installed') {
-    showInstallPrompt(root, config, undefined, appName);
+  // Check that the server-side ClickUp destination is ready.
+  const destinationStatus = await checkClickUpDestination(config);
+  if (destinationStatus === 'not_configured') {
+    showInstallPrompt(root, config);
     return;
   }
-  if (installStatus === 'unreachable') {
-    showInstallPrompt(root, config, t().apiUnreachableMessage, appName);
+  if (destinationStatus === 'unreachable') {
+    showInstallPrompt(root, config, t().apiUnreachableMessage);
     return;
   }
 
@@ -1125,36 +1067,22 @@ async function openFeedbackFlow(
   _isModalOpen = false;
 }
 
-async function checkInstallation(
+async function checkClickUpDestination(
   config: WidgetConfig
-): Promise<{ status: 'installed' | 'not_installed' | 'unreachable'; appName?: string }> {
+): Promise<'configured' | 'not_configured' | 'unreachable'> {
   try {
-    const response = await fetch(`${config.apiUrl}/check/${config.repo}`, {
+    const response = await fetch(`${config.apiUrl}/check`, {
       headers: await getAuthHeaders(config.authTokenProvider),
     });
-    if (!response.ok) return { status: 'unreachable' };
+    if (!response.ok) return 'unreachable';
     const data = await response.json();
-    return {
-      status: data.installed === true ? 'installed' : 'not_installed',
-      appName: data.appName,
-    };
+    return data.configured === true ? 'configured' : 'not_configured';
   } catch {
-    return { status: 'unreachable' };
+    return 'unreachable';
   }
 }
 
-function showInstallPrompt(
-  root: HTMLElement,
-  config: WidgetConfig,
-  errorMessage?: string,
-  serverAppName?: string
-) {
-  const appName =
-    serverAppName ||
-    (config.apiUrl.includes('bugdrop.neonwatty.workers.dev')
-      ? 'neonwatty-bugdrop'
-      : config.apiUrl.replace(/https?:\/\//, '').replace(/\..*/, ''));
-  const installUrl = `https://github.com/apps/${appName}/installations/new`;
+function showInstallPrompt(root: HTMLElement, config: WidgetConfig, errorMessage?: string) {
   const message = errorMessage || t().installRequiredMessage;
   const title = errorMessage ? t().connectionErrorTitle : t().installRequiredTitle;
   const modal = createModal(
@@ -1164,7 +1092,6 @@ function showInstallPrompt(
       <p style="margin: 0 0 16px; color: var(--bd-text-secondary);">${escapeHtml(message)}</p>
       <div class="bd-actions">
         <button class="bd-btn bd-btn-secondary" data-action="cancel">${escapeWidgetText(t().cancel)}</button>
-        ${!errorMessage ? `<a href="${installUrl}" target="_blank" class="bd-btn bd-btn-primary" style="text-decoration: none;">${escapeWidgetText(t().installApp)}</a>` : ''}
       </div>
     `,
     true
@@ -1579,7 +1506,7 @@ async function submitFeedback(root: HTMLElement, config: WidgetConfig, data: Fee
     `
       <div style="display: flex; flex-direction: column; align-items: center; padding: 20px;">
         <div class="bd-spinner bd-spinner--lg"></div>
-        <p class="bd-loading-text" style="margin-top: 12px;">${escapeWidgetText(t().creatingIssue)}</p>
+        <p class="bd-loading-text" style="margin-top: 12px;">${escapeWidgetText(t().creatingTask)}</p>
       </div>
     `
   );
@@ -1602,11 +1529,9 @@ async function submitFeedback(root: HTMLElement, config: WidgetConfig, data: Fee
         ...(await getAuthHeaders(config.authTokenProvider)),
       },
       body: JSON.stringify({
-        repo: config.repo,
         title: data.title,
         description: data.description,
         category: data.category,
-        categoryLabels: config.categoryLabels,
         screenshot: data.screenshot,
         attachments: data.attachments,
         consoleLogs,
@@ -1645,13 +1570,7 @@ async function submitFeedback(root: HTMLElement, config: WidgetConfig, data: Fee
     const result = await response.json();
 
     if (result.success) {
-      await showSuccessModal(
-        root,
-        result.issueNumber,
-        result.issueUrl,
-        result.isPublic ?? false,
-        config.issueLinkVisibility
-      );
+      await showSuccessModal(root, result.taskId, result.taskUrl, true, config.issueLinkVisibility);
     } else {
       showSubmitError(root, config, data, result.error || t().submitFailedFallback);
     }

@@ -8,13 +8,11 @@ export const nl: WidgetStrings = {
   pullTabAriaLabel: 'Feedbackknop tonen',
   dragHandleTitle: 'Feedbackknop verslepen',
   // Install prompt
-  installRequiredTitle: 'Installatie vereist',
+  installRequiredTitle: 'ClickUp niet geconfigureerd',
   connectionErrorTitle: 'Verbindingsfout',
-  installRequiredMessage:
-    'BugDrop vereist installatie van de GitHub-app om issues te kunnen aanmaken.',
+  installRequiredMessage: 'BugDrop heeft een geconfigureerde ClickUp-bestemming nodig.',
   apiUnreachableMessage:
     'Kan de BugDrop-API niet bereiken. Controleer uw netwerkverbinding of de URL van de scripttag.',
-  installApp: 'App installeren',
   // Welcome screen
   welcomeTitle: 'Deel uw feedback',
   welcomeHeadline: 'Help ons verbeteren door uw mening te delen',
@@ -59,7 +57,7 @@ export const nl: WidgetStrings = {
   submit: 'Versturen',
   // Submission
   submittingTitle: 'Versturen...',
-  creatingIssue: 'Issue aanmaken...',
+  creatingTask: 'ClickUp-taak aanmaken...',
   rateLimited: (minutes: number) =>
     `Te veel inzendingen. Probeer het over ${minutes} ${minutes === 1 ? 'minuut' : 'minuten'} opnieuw.`,
   submitFailedFallback: 'Versturen mislukt',
@@ -68,9 +66,9 @@ export const nl: WidgetStrings = {
   tryAgain: 'Opnieuw proberen',
   // Success modal
   successTitle: 'Feedback verstuurd!',
-  issueCreated: (issueNumberHtml: string) => `Issue ${issueNumberHtml} is aangemaakt.`,
+  taskCreated: (taskIdHtml: string) => `ClickUp-taak ${taskIdHtml} is aangemaakt.`,
   feedbackSubmittedMessage: 'Uw feedback is succesvol verstuurd.',
-  viewOnGitHub: 'Bekijken op GitHub',
+  viewInClickUp: 'Bekijken in ClickUp',
   done: 'Klaar',
   // Screenshot options
   captureScreenshotTitle: 'Schermafbeelding maken',

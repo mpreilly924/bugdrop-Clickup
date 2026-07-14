@@ -10,9 +10,9 @@ git clone https://github.com/mean-weasel/bugdrop
 cd bugdrop
 make install
 
-# Configure (see SELF_HOSTING.md for GitHub App setup)
+# Configure (see SELF_HOSTING.md for ClickUp setup)
 cp .dev.vars.example .dev.vars
-# Edit .dev.vars with your GitHub App credentials
+# Edit .dev.vars with your ClickUp API token and List ID
 
 # Start dev server
 make dev
@@ -48,7 +48,7 @@ make ci          # Full CI pipeline
 src/
 ├── index.ts           # Worker entry point
 ├── routes/api.ts      # API endpoints
-├── lib/github.ts      # GitHub API client
+├── lib/clickup.ts     # ClickUp API client
 └── widget/            # Client-side widget
     ├── index.ts       # Widget entry
     ├── ui.ts          # UI components + theming

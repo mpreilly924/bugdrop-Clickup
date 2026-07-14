@@ -8,12 +8,12 @@ export const en: WidgetStrings = {
   pullTabAriaLabel: 'Show feedback button',
   dragHandleTitle: 'Drag feedback button',
   // Install prompt
-  installRequiredTitle: 'Install Required',
+  installRequiredTitle: 'ClickUp Not Configured',
   connectionErrorTitle: 'Connection Error',
-  installRequiredMessage: 'BugDrop requires GitHub App installation to create issues.',
+  installRequiredMessage:
+    'BugDrop needs a ClickUp destination configured before feedback can be sent.',
   apiUnreachableMessage:
     'Unable to reach BugDrop API. Check your network connection or script tag URL.',
-  installApp: 'Install App',
   // Welcome screen
   welcomeTitle: 'Share Your Feedback',
   welcomeHeadline: 'Help us improve by sharing your thoughts',
@@ -56,7 +56,7 @@ export const en: WidgetStrings = {
   submit: 'Submit',
   // Submission
   submittingTitle: 'Submitting...',
-  creatingIssue: 'Creating issue...',
+  creatingTask: 'Creating ClickUp task...',
   rateLimited: (minutes: number) =>
     `Too many submissions. Please try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
   submitFailedFallback: 'Failed to submit',
@@ -65,9 +65,9 @@ export const en: WidgetStrings = {
   tryAgain: 'Try Again',
   // Success modal
   successTitle: 'Feedback Submitted!',
-  issueCreated: (issueNumberHtml: string) => `Issue ${issueNumberHtml} has been created.`,
+  taskCreated: (taskIdHtml: string) => `ClickUp task ${taskIdHtml} has been created.`,
   feedbackSubmittedMessage: 'Your feedback has been submitted successfully.',
-  viewOnGitHub: 'View on GitHub',
+  viewInClickUp: 'View in ClickUp',
   done: 'Done',
   // Screenshot options
   captureScreenshotTitle: 'Capture Screenshot',

@@ -15,12 +15,11 @@ export const pl: WidgetStrings = {
   pullTabAriaLabel: 'Pokaż przycisk opinii',
   dragHandleTitle: 'Przeciągnij przycisk opinii',
   // Install prompt
-  installRequiredTitle: 'Wymagana instalacja',
+  installRequiredTitle: 'ClickUp nie jest skonfigurowany',
   connectionErrorTitle: 'Błąd połączenia',
-  installRequiredMessage: 'BugDrop wymaga instalacji aplikacji GitHub, aby tworzyć zgłoszenia.',
+  installRequiredMessage: 'BugDrop wymaga skonfigurowanego miejsca docelowego ClickUp.',
   apiUnreachableMessage:
     'Nie można połączyć się z API BugDrop. Sprawdź połączenie sieciowe lub adres URL w tagu skryptu.',
-  installApp: 'Zainstaluj aplikację',
   // Welcome screen
   welcomeTitle: 'Podziel się opinią',
   welcomeHeadline: 'Pomóż nam się rozwijać, dzieląc się swoimi uwagami',
@@ -66,7 +65,7 @@ export const pl: WidgetStrings = {
   submit: 'Wyślij',
   // Submission
   submittingTitle: 'Wysyłanie...',
-  creatingIssue: 'Tworzenie zgłoszenia...',
+  creatingTask: 'Tworzenie zadania ClickUp...',
   rateLimited: (minutes: number) =>
     `Zbyt wiele zgłoszeń. Spróbuj ponownie za ${minutes} ${
       minutes === 1 ? 'minutę' : isFew(minutes) ? 'minuty' : 'minut'
@@ -77,9 +76,9 @@ export const pl: WidgetStrings = {
   tryAgain: 'Spróbuj ponownie',
   // Success modal
   successTitle: 'Opinia wysłana!',
-  issueCreated: (issueNumberHtml: string) => `Utworzono zgłoszenie ${issueNumberHtml}.`,
+  taskCreated: (taskIdHtml: string) => `Utworzono zadanie ClickUp ${taskIdHtml}.`,
   feedbackSubmittedMessage: 'Twoja opinia została pomyślnie wysłana.',
-  viewOnGitHub: 'Zobacz na GitHubie',
+  viewInClickUp: 'Zobacz w ClickUp',
   done: 'Gotowe',
   // Screenshot options
   captureScreenshotTitle: 'Zrób zrzut ekranu',

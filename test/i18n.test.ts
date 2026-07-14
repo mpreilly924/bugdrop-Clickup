@@ -96,12 +96,12 @@ describe('locale dictionaries', () => {
   });
 
   it('preserves trusted HTML placeholders exactly once in rich messages', () => {
-    const issueLink = '<strong>#1</strong>';
+    const taskLink = '<strong>#abc123</strong>';
     const configLink = '<a href="#docs">data-element-context-max-area</a>';
 
-    expect(en.issueCreated(issueLink)).toBe(`Issue ${issueLink} has been created.`);
-    expect(nl.issueCreated(issueLink).match(/<strong>#1<\/strong>/g)).toHaveLength(1);
-    expect(pl.issueCreated(issueLink).match(/<strong>#1<\/strong>/g)).toHaveLength(1);
+    expect(en.taskCreated(taskLink)).toBe(`ClickUp task ${taskLink} has been created.`);
+    expect(nl.taskCreated(taskLink).match(/<strong>#abc123<\/strong>/g)).toHaveLength(1);
+    expect(pl.taskCreated(taskLink).match(/<strong>#abc123<\/strong>/g)).toHaveLength(1);
 
     expect(en.selectedElementNote(configLink).match(/<a href="#docs">/g)).toHaveLength(1);
     expect(nl.selectedElementNote(configLink).match(/<a href="#docs">/g)).toHaveLength(1);

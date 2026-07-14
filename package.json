@@ -1,7 +1,7 @@
 {
   "name": "bugdrop",
   "version": "1.14.0",
-  "description": "In-app feedback → GitHub Issues. Screenshots, annotations, the works.",
+  "description": "In-app feedback → ClickUp tasks. Screenshots, annotations, the works.",
   "type": "module",
   "main": "./public/widget.js",
   "exports": {

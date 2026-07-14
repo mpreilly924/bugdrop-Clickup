@@ -2,35 +2,27 @@
 # Copy this file to .dev.vars and fill in your values
 
 # =============================================================================
-# REQUIRED: GitHub App Credentials
+# REQUIRED: ClickUp Credentials
 # =============================================================================
 
-# Step 1: Create a GitHub App at https://github.com/settings/apps/new
-#   - Name: Choose a unique name (this becomes your GITHUB_APP_NAME)
-#   - Homepage URL: Your worker URL (e.g., https://bugdrop.your-subdomain.workers.dev)
-#   - Webhook: Uncheck "Active" (not needed)
-#   - Permissions:
-#     - Repository > Issues: Read & Write
-#     - Repository > Contents: Read & Write (for screenshot uploads)
-#   - Where can this app be installed?: "Any account" or "Only on this account"
+# Step 1: Get a personal API token
+#   - Log into ClickUp
+#   - Click your avatar (bottom left) → Settings → Apps
+#   - Under "API Token", click "Generate" (or "Regenerate" if one already exists)
+#   - Copy the token — it starts with "pk_"
+CLICKUP_API_TOKEN=pk_your_token_here
 
-# Step 2: After creating the app, note the App ID (shown at top of app settings)
-GITHUB_APP_ID=123456
-
-# Step 3: Generate a private key (scroll down in app settings, click "Generate a private key")
-# The key downloads as a .pem file. Paste the entire contents here:
-GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-YOUR_PRIVATE_KEY_CONTENT_HERE
------END RSA PRIVATE KEY-----"
+# Step 2: Get the destination List ID
+#   - Open the ClickUp List where BugDrop tasks should be created
+#   - The List ID is the numeric segment in the URL, e.g.
+#     https://app.clickup.com/9012345/v/li/901234567 → List ID is 901234567
+#   - Or right-click the List in the sidebar → "Copy link" and take the trailing ID
+# Local development should override the committed wrangler.toml default here instead of editing wrangler.toml.
+CLICKUP_LIST_ID=901234567
 
 # =============================================================================
 # OPTIONAL: Override wrangler.toml defaults for local development
 # =============================================================================
-
-# Your GitHub App's URL slug (the name in lowercase with hyphens)
-# Find it at: https://github.com/apps/YOUR_APP_NAME
-# Local development should override the committed wrangler.toml default here instead of editing wrangler.toml.
-# GITHUB_APP_NAME=my-bugdrop-app
 
 # Allowed origins for CORS (comma-separated, or "*" for all)
 # In production, set this to your actual domains
@@ -42,7 +34,7 @@ YOUR_PRIVATE_KEY_CONTENT_HERE
 # Optional: where "/" redirects for self-hosted deployments.
 # ROOT_REDIRECT_URL=https://example.com
 
-# Optional: require short-lived host-app auth tokens before creating issues.
+# Optional: require short-lived host-app auth tokens before creating tasks.
 # Use this for self-hosted widgets that should only accept feedback from authenticated users.
 # AUTH_TOKEN_SECRET=replace-with-a-long-random-secret-at-least-32-bytes
 # AUTH_TOKEN_AUDIENCE=bugdrop.your-subdomain.workers.dev
