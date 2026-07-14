@@ -22,33 +22,31 @@ test.describe('Health API', () => {
   });
 });
 
-test.describe('Installation Check API', () => {
-  test('GET /api/check/:owner/:repo returns response', async ({ request }) => {
-    // Without GitHub App configured, this may return error or installed: false
-    const response = await request.get('/api/check/testowner/testrepo');
+test.describe('ClickUp destination check API', () => {
+  test('GET /api/check reports whether the ClickUp destination is configured', async ({
+    request,
+  }) => {
+    const response = await request.get('/api/check');
 
-    // Should return 200 (with installed: false) or 500 (if no credentials configured)
-    expect([200, 500]).toContain(response.status());
+    expect(response.status()).toBe(200);
+    await expect(response.json()).resolves.toEqual({ configured: false });
   });
 });
 
 test.describe('Feedback API - Validation', () => {
-  test('POST /api/feedback returns 400 for missing repo', async ({ request }) => {
+  test('POST /api/feedback does not require a GitHub repository', async ({ request }) => {
     const response = await request.post('/api/feedback', {
       data: {
         title: 'Test',
         description: 'Test description',
       },
     });
-    expect(response.status()).toBe(400);
-    const data = await response.json();
-    expect(data.error).toContain('Missing required fields');
+    expect(response.status()).toBe(503);
   });
 
   test('POST /api/feedback returns 400 for missing title', async ({ request }) => {
     const response = await request.post('/api/feedback', {
       data: {
-        repo: 'owner/repo',
         description: 'Test description',
       },
     });
@@ -58,32 +56,12 @@ test.describe('Feedback API - Validation', () => {
   test('POST /api/feedback accepts missing description (optional field)', async ({ request }) => {
     const response = await request.post('/api/feedback', {
       data: {
-        repo: 'owner/repo',
         title: 'Test',
       },
     });
     // Description is optional — server should not reject this.
-    // Will get 500 due to missing GitHub secrets in E2E, but not 400.
-    expect(response.status()).not.toBe(400);
-  });
-
-  test('POST /api/feedback returns 400 for invalid repo format', async ({ request }) => {
-    const response = await request.post('/api/feedback', {
-      data: {
-        repo: 'invalidformat',
-        title: 'Test',
-        description: 'Test description',
-        metadata: {
-          url: 'http://test.com',
-          userAgent: 'test',
-          viewport: { width: 1920, height: 1080 },
-          timestamp: new Date().toISOString(),
-        },
-      },
-    });
-    expect(response.status()).toBe(400);
-    const data = await response.json();
-    expect(data.error).toContain('Invalid repo format');
+    // It reaches destination configuration instead of failing repository validation.
+    expect(response.status()).toBe(503);
   });
 
   test('POST /api/feedback returns 400 for invalid JSON', async ({ request }) => {
@@ -96,13 +74,11 @@ test.describe('Feedback API - Validation', () => {
 });
 
 test.describe('Feedback API - Valid Payloads', () => {
-  test('POST /api/feedback with valid payload returns 403 (app not installed)', async ({
+  test('POST /api/feedback with valid payload returns 503 when ClickUp is not configured', async ({
     request,
   }) => {
-    // Without a real GitHub App configured, this should return 403
     const response = await request.post('/api/feedback', {
       data: {
-        repo: 'testowner/testrepo',
         title: 'Test Feedback',
         description: 'This is a test feedback submission',
         metadata: {
@@ -114,9 +90,7 @@ test.describe('Feedback API - Valid Payloads', () => {
       },
     });
 
-    // Should be 403 because GitHub App is not installed
-    // Or 500 if there's an error with GitHub API
-    expect([403, 500]).toContain(response.status());
+    expect(response.status()).toBe(503);
   });
 });
 

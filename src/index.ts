@@ -11,8 +11,8 @@ let envChecked = false;
 app.use('*', async (c, next) => {
   if (!envChecked) {
     const missing: string[] = [];
-    if (!c.env.GITHUB_APP_ID) missing.push('GITHUB_APP_ID');
-    if (!c.env.GITHUB_PRIVATE_KEY) missing.push('GITHUB_PRIVATE_KEY');
+    if (!c.env.CLICKUP_API_TOKEN) missing.push('CLICKUP_API_TOKEN');
+    if (!c.env.CLICKUP_LIST_ID) missing.push('CLICKUP_LIST_ID');
 
     if (missing.length > 0) {
       console.warn(

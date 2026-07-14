@@ -10,12 +10,11 @@ export interface WidgetStrings {
   dismissButtonAriaLabel: string;
   pullTabAriaLabel: string;
   dragHandleTitle: string;
-  // Install prompt
+  // Destination configuration prompt
   installRequiredTitle: string;
   connectionErrorTitle: string;
   installRequiredMessage: string;
   apiUnreachableMessage: string;
-  installApp: string;
   // Welcome screen
   welcomeTitle: string;
   welcomeHeadline: string;
@@ -56,7 +55,7 @@ export interface WidgetStrings {
   submit: string;
   // Submission
   submittingTitle: string;
-  creatingIssue: string;
+  creatingTask: string;
   rateLimited: (minutes: number) => string;
   submitFailedFallback: string;
   networkError: string;
@@ -64,10 +63,10 @@ export interface WidgetStrings {
   tryAgain: string;
   // Success modal
   successTitle: string;
-  // Callers pass a trusted issue-number HTML fragment; dictionaries own surrounding text only.
-  issueCreated: (issueNumberHtml: string) => string;
+  // Callers pass a trusted ClickUp task-id HTML fragment; dictionaries own surrounding text only.
+  taskCreated: (taskIdHtml: string) => string;
   feedbackSubmittedMessage: string;
-  viewOnGitHub: string;
+  viewInClickUp: string;
   done: string;
   // Screenshot options
   captureScreenshotTitle: string;

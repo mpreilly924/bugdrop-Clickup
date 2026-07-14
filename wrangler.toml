@@ -18,7 +18,7 @@ binding = "ASSETS"
 [vars]
 ENVIRONMENT = "development"
 ALLOWED_ORIGINS = "*"  # "*" for dev, comma-separated URLs for production
-GITHUB_APP_NAME = "neonwatty-bugdrop"  # Your GitHub App's URL slug
+CLICKUP_LIST_ID = "" # Destination ClickUp List ID
 MAX_SCREENSHOT_SIZE_MB = "5"  # Maximum screenshot size in MB
 BUGDROP_BOARD_TENANT_ID = "tenant_mean_weasel"
 BUGDROP_BOARD_APP_ID = "app_mean_weasel_bugdrop_dogfood"
@@ -34,9 +34,8 @@ binding = "RATE_LIMIT"
 id = "e6454ed79f514ed3a9e24eea99dd6cd3"
 preview_id = "ff8f3809037d4403befd09369a9f7e36"
 
-# Secrets (set with: wrangler secret put GITHUB_APP_ID)
-# GITHUB_APP_ID
-# GITHUB_PRIVATE_KEY
+# Secrets (set with: wrangler secret put CLICKUP_API_TOKEN)
+# CLICKUP_API_TOKEN
 # AUTH_TOKEN_SECRET  # Optional: set to require signed host-app auth tokens for /feedback
 # BUGDROP_BOARD_TOKEN_SECRET  # Optional: enables /board embedded demo token signing
 
@@ -49,7 +48,7 @@ routes = []
 [env.preview.vars]
 ENVIRONMENT = "preview"
 ALLOWED_ORIGINS = "*"
-GITHUB_APP_NAME = "neonwatty-bugdrop"
+CLICKUP_LIST_ID = ""
 MAX_SCREENSHOT_SIZE_MB = "5"
 
 [[env.preview.kv_namespaces]]

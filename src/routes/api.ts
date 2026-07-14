@@ -8,16 +8,8 @@ import type {
   FeedbackPayload,
 } from '../types';
 import { redactConsoleLogMessage } from '../widget/console-log-redaction';
-import {
-  getInstallationToken,
-  createIssue,
-  uploadScreenshotAsAsset,
-  uploadAttachmentAsAsset,
-  isRepoPublic,
-  GitHubLabelError,
-} from '../lib/github';
-import { rateLimit, rateLimitByRepo } from '../middleware/rateLimit';
-import { resolveAccentColor } from '../defaults';
+import { createTask, uploadTaskAttachment } from '../lib/clickup';
+import { rateLimit } from '../middleware/rateLimit';
 import { verifyBugDropAuthToken } from '../lib/authToken';
 
 type ApiVariables = {
@@ -27,14 +19,7 @@ type ApiEnv = { Bindings: Env; Variables: ApiVariables };
 
 const api = new Hono<ApiEnv>();
 
-const DEFAULT_CATEGORY_LABELS: Record<FeedbackCategory, string[]> = {
-  bug: ['bug'],
-  feature: ['enhancement'],
-  question: ['question'],
-};
-
 const CATEGORY_KEYS: FeedbackCategory[] = ['bug', 'feature', 'question'];
-const MAX_LABELS_PER_CATEGORY = 5;
 const MAX_ATTACHMENTS = 5;
 const ALLOWED_ATTACHMENT_TYPES = new Set([
   'image/png',
@@ -49,10 +34,6 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
 const MAX_CONSOLE_LOG_ENTRIES = 50;
 const MAX_CONSOLE_LOG_BODY_CHARS = 12_000;
 const MAX_CONSOLE_LOG_MESSAGE_CHARS = 1_000;
-// GitHub enforces a 50-char limit on label names; keep validation in lockstep
-// so over-long configured labels surface as a clear local warning rather than
-// going out, getting rejected, and triggering the GitHub-error fallback path.
-const MAX_LABEL_LENGTH = 50;
 
 // CORS middleware with origin whitelist
 api.use('*', async (c, next) => {
@@ -96,15 +77,6 @@ api.use(
 // Authenticate protected submissions before shared repo quota accounting.
 api.use('/feedback', requireBugDropFeedbackAuthToken);
 
-// Rate limit: 50 requests per hour per repo
-api.use(
-  '/feedback',
-  rateLimitByRepo({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    maxRequests: 50,
-  })
-);
-
 // Health check
 api.get('/health', c => {
   return c.json({
@@ -114,23 +86,14 @@ api.get('/health', c => {
   });
 });
 
-// Check if app is installed on repo
-api.get('/check/:owner/:repo', async c => {
-  const { owner, repo } = c.req.param();
-  const fullRepo = `${owner}/${repo}`;
-
+// Check that the ClickUp destination is configured without exposing credentials.
+api.get('/check', async c => {
   if (c.env.AUTH_TOKEN_REQUIRED_FOR_CHECK === 'true') {
-    const authError = await requireBugDropAuthToken(c, fullRepo);
+    const authError = await requireBugDropAuthToken(c, c.env.CLICKUP_LIST_ID);
     if (authError) return authError;
   }
 
-  const token = await getInstallationToken(c.env, owner, repo);
-
-  return c.json({
-    installed: !!token,
-    repo: fullRepo,
-    appName: c.env.GITHUB_APP_NAME || undefined,
-  });
+  return c.json({ configured: Boolean(c.env.CLICKUP_API_TOKEN && c.env.CLICKUP_LIST_ID) });
 });
 
 // Submit feedback
@@ -144,10 +107,10 @@ api.post('/feedback', async c => {
   }
 
   // Validate required fields (description is optional — many reports are title + screenshot)
-  if (!payload.repo || !payload.title) {
+  if (!payload.title) {
     return c.json(
       {
-        error: 'Missing required fields: repo, title',
+        error: 'Missing required field: title',
       },
       400
     );
@@ -167,120 +130,62 @@ api.post('/feedback', async c => {
     return c.json({ error: attachmentValidation.error }, 400);
   }
 
-  // Parse owner/repo
-  const [owner, repo] = payload.repo.split('/');
-  if (!owner || !repo) {
-    return c.json(
-      {
-        error: 'Invalid repo format. Expected: owner/repo',
-      },
-      400
-    );
-  }
-
-  const authError = await requireBugDropAuthToken(c, payload.repo);
+  const authError = await requireBugDropAuthToken(c, c.env.CLICKUP_LIST_ID);
   if (authError) return authError;
 
   try {
-    // Get installation token
-    const token = await getInstallationToken(c.env, owner, repo);
-    if (!token) {
-      const appName = c.env.GITHUB_APP_NAME || 'your-app-name';
-      return c.json(
-        {
-          error: 'GitHub App not installed on this repository',
-          installUrl: `https://github.com/apps/${appName}/installations/new`,
-        },
-        403
-      );
+    if (!c.env.CLICKUP_API_TOKEN || !c.env.CLICKUP_LIST_ID) {
+      return c.json({ error: 'ClickUp destination is not configured' }, 503);
     }
 
-    // Upload screenshot as file and get URL
-    let screenshotUrl: string | undefined;
-    const imageData = payload.screenshot;
-    if (imageData) {
-      try {
-        screenshotUrl = await uploadScreenshotAsAsset(token, owner, repo, imageData);
-      } catch (error) {
-        console.error('Failed to upload screenshot:', error);
-        // Continue without screenshot rather than failing the whole submission
-      }
-    }
-    const uploadedAttachments: UploadedAttachment[] = [];
-    for (const attachment of payload.attachments ?? []) {
-      const url = await uploadAttachmentAsAsset(token, owner, repo, attachment);
-      uploadedAttachments.push({ ...attachment, url });
-    }
-
-    const labelResolution = resolveCategoryLabels(payload, c.env, payload.repo);
-    if (labelResolution.warnings.length > 0) {
-      // Surface warnings in worker logs so self-host operators see the misconfig
-      // even when no issue is filed. Otherwise these warnings only ever appear
-      // in successfully-created issue bodies.
-      console.warn('[BugDrop] Category label config warnings:', {
-        repo: payload.repo,
-        warnings: labelResolution.warnings,
-      });
-    }
-
-    // Check repo visibility (for UI to decide whether to show issue link)
-    const isPublic = await isRepoPublic(token, owner, repo);
-
-    let body = formatIssueBody(
-      payload,
-      screenshotUrl,
-      uploadedAttachments,
-      labelResolution.warnings
+    const category = isFeedbackCategory(payload.category) ? payload.category : 'bug';
+    const task = await createTask(
+      c.env.CLICKUP_API_TOKEN,
+      c.env.CLICKUP_LIST_ID,
+      payload.title,
+      formatTaskDescription(payload),
+      category
     );
-    let issue;
-    try {
-      issue = await createIssue(token, owner, repo, payload.title, body, labelResolution.labels);
-    } catch (error) {
-      if (!labelResolution.usedCustomLabels || !(error instanceof GitHubLabelError)) {
-        throw error;
-      }
 
-      const fallbackLabels = buildIssueLabels(getDefaultLabelsForCategory(payload.category));
-      const warning = [
-        ...labelResolution.warnings,
-        `GitHub rejected the configured labels (${formatLabelList(labelResolution.labels)}), so BugDrop retried with default labels (${formatLabelList(fallbackLabels)}).`,
-      ];
-      body = formatIssueBody(payload, screenshotUrl, uploadedAttachments, warning);
+    const attachments = [
+      ...(payload.screenshot
+        ? [
+            {
+              name: 'bugdrop-screenshot.png',
+              type: 'image/png',
+              size: 0,
+              dataUrl: payload.screenshot,
+            },
+          ]
+        : []),
+      ...(payload.attachments ?? []),
+    ];
+    const attachmentWarnings: string[] = [];
+    for (const attachment of attachments) {
       try {
-        issue = await createIssue(token, owner, repo, payload.title, body, fallbackLabels);
-      } catch (fallbackError) {
-        // Both configured AND default labels failed — surface a distinct error
-        // so operators can tell this from a single-call failure. Without this,
-        // the outer catch reports only the second error and loses the retry
-        // context entirely.
-        console.error('[BugDrop] Both configured and default labels failed.', {
-          configured: labelResolution.labels,
-          fallback: fallbackLabels,
-          originalError: error,
-          fallbackError,
+        await uploadTaskAttachment(c.env.CLICKUP_API_TOKEN, task.id, attachment);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[BugDrop] Failed to upload ClickUp attachment', {
+          taskId: task.id,
+          name: attachment.name,
+          message,
         });
-        const fallbackMessage =
-          fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-        throw new Error(
-          `Failed to create issue with both configured labels (${formatLabelList(labelResolution.labels)}) and default labels (${formatLabelList(fallbackLabels)}): ${fallbackMessage}`
-        );
+        attachmentWarnings.push(`Could not attach ${attachment.name}.`);
       }
     }
 
     return c.json({
       success: true,
-      issueNumber: issue.number,
-      issueUrl: issue.html_url,
-      isPublic,
-      ...(labelResolution.warnings.length > 0
-        ? { labelMappingWarnings: labelResolution.warnings }
-        : {}),
+      taskId: task.id,
+      taskUrl: task.url,
+      ...(attachmentWarnings.length > 0 ? { attachmentWarnings } : {}),
     });
   } catch (error) {
     console.error('Error creating feedback:', error);
     return c.json(
       {
-        error: error instanceof Error ? error.message : 'Failed to create issue',
+        error: error instanceof Error ? error.message : 'Failed to create ClickUp task',
       },
       500
     );
@@ -296,9 +201,7 @@ async function requireBugDropFeedbackAuthToken(
   try {
     const payload = (await c.req.raw.clone().json()) as FeedbackPayload;
     c.set('feedbackPayload', payload);
-    if (typeof payload.repo !== 'string') return next();
-
-    const authError = await requireBugDropAuthToken(c, payload.repo);
+    const authError = await requireBugDropAuthToken(c, c.env.CLICKUP_LIST_ID);
     if (authError) return authError;
   } catch {
     // Let the route handler return the existing invalid JSON response.
@@ -378,13 +281,6 @@ async function verifyBugDropAuthTokenWithAnySecret(
 }
 
 type ScreenshotValidationResult = { valid: true } | { valid: false; error: string };
-type LabelResolution = {
-  labels: string[];
-  warnings: string[];
-  usedCustomLabels: boolean;
-};
-type UploadedAttachment = FeedbackAttachment & { url: string };
-
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 function validateScreenshotDataUrl(dataUrl: string, maxSizeMB: number): ScreenshotValidationResult {
@@ -509,189 +405,6 @@ function validateAttachment(
   return { valid: true };
 }
 
-function resolveCategoryLabels(payload: FeedbackPayload, env: Env, repo: string): LabelResolution {
-  const selectedCategory = isFeedbackCategory(payload.category) ? payload.category : 'bug';
-  const labelsByCategory: Record<FeedbackCategory, string[]> = { ...DEFAULT_CATEGORY_LABELS };
-  const warnings: string[] = [];
-  const configuredLabels = getConfiguredCategoryLabels(payload, env, repo, warnings);
-  let selectedCategoryWasCustomized = false;
-
-  if (configuredLabels !== undefined) {
-    for (const key of Object.keys(configuredLabels)) {
-      if (!isFeedbackCategory(key)) {
-        warnings.push(`Unknown category label mapping key ignored: \`${safeInlineCode(key)}\`.`);
-        continue;
-      }
-
-      const normalized = normalizeLabelValue(configuredLabels[key], key);
-      if (normalized.valid) {
-        labelsByCategory[key] = normalized.labels;
-        if (key === selectedCategory) {
-          selectedCategoryWasCustomized = !sameLabels(
-            normalized.labels,
-            DEFAULT_CATEGORY_LABELS[selectedCategory]
-          );
-        }
-      } else {
-        warnings.push(normalized.warning);
-      }
-    }
-  }
-
-  return {
-    labels: buildIssueLabels(labelsByCategory[selectedCategory]),
-    warnings,
-    usedCustomLabels: selectedCategoryWasCustomized,
-  };
-}
-
-// Discriminated result of parsing CATEGORY_LABELS so the caller cannot conflate
-// "env unset" with "env set but unusable" — the latter must fail closed even when
-// ALLOW_CLIENT_CATEGORY_LABELS is true.
-type EnvCategoryConfigResult =
-  | { kind: 'unset' }
-  | { kind: 'config'; value: Record<string, unknown> }
-  | { kind: 'malformed'; warning: string }
-  | { kind: 'invalid-shape'; warning: string }
-  | { kind: 'no-match'; warning: string };
-
-function getConfiguredCategoryLabels(
-  payload: FeedbackPayload,
-  env: Env,
-  repo: string,
-  warnings: string[]
-): Record<string, unknown> | undefined {
-  const envResult = parseEnvCategoryLabels(env.CATEGORY_LABELS, repo);
-
-  switch (envResult.kind) {
-    case 'config':
-      return envResult.value;
-    case 'malformed':
-    case 'invalid-shape':
-    case 'no-match':
-      // Env was set but unusable — fail closed. Do NOT fall through to the
-      // client mapping even when ALLOW_CLIENT_CATEGORY_LABELS=true: the operator
-      // explicitly configured server authority, and a typo must not silently
-      // hand label control back to the browser.
-      warnings.push(envResult.warning);
-      return undefined;
-    case 'unset':
-      if (env.ALLOW_CLIENT_CATEGORY_LABELS !== 'true') return undefined;
-      if (payload.categoryLabels === undefined) return undefined;
-      if (!isPlainObject(payload.categoryLabels)) {
-        warnings.push('Invalid category label mapping: expected an object.');
-        return undefined;
-      }
-      return payload.categoryLabels;
-  }
-}
-
-function parseEnvCategoryLabels(
-  rawValue: string | undefined,
-  repo: string
-): EnvCategoryConfigResult {
-  if (!rawValue) return { kind: 'unset' };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawValue);
-  } catch {
-    return { kind: 'malformed', warning: 'Invalid server category label config: malformed JSON.' };
-  }
-
-  if (!isPlainObject(parsed)) {
-    return {
-      kind: 'invalid-shape',
-      warning: 'Invalid server category label config: expected a JSON object.',
-    };
-  }
-
-  // Disambiguate flat vs per-repo by syntax, not by guessing: per-repo keys are
-  // either the wildcard `*` or contain a `/` (owner/repo). Category keys never do.
-  const isPerRepoShape = Object.keys(parsed).some(k => k === '*' || k.includes('/'));
-  if (!isPerRepoShape) {
-    return { kind: 'config', value: parsed };
-  }
-
-  const match = parsed[repo] ?? parsed['*'];
-  if (match === undefined) {
-    return {
-      kind: 'no-match',
-      warning: `Server category label config has no mapping for \`${safeInlineCode(repo)}\` and no \`*\` fallback.`,
-    };
-  }
-  if (!isPlainObject(match)) {
-    return {
-      kind: 'invalid-shape',
-      warning: `Invalid server category label config for \`${safeInlineCode(repo)}\`: expected an object.`,
-    };
-  }
-  return { kind: 'config', value: match };
-}
-
-function getDefaultLabelsForCategory(category: FeedbackCategory | undefined): string[] {
-  return DEFAULT_CATEGORY_LABELS[isFeedbackCategory(category) ? category : 'bug'];
-}
-
-function buildIssueLabels(categoryLabels: string[]): string[] {
-  return uniqueLabels([...categoryLabels, 'bugdrop']);
-}
-
-function normalizeLabelValue(
-  value: unknown,
-  category: FeedbackCategory
-): { valid: true; labels: string[] } | { valid: false; warning: string } {
-  const rawLabels = typeof value === 'string' ? [value] : Array.isArray(value) ? value : null;
-  if (!rawLabels) {
-    return {
-      valid: false,
-      warning: `Invalid labels for category "${category}": expected a string or string array.`,
-    };
-  }
-
-  if (rawLabels.length === 0 || rawLabels.length > MAX_LABELS_PER_CATEGORY) {
-    return {
-      valid: false,
-      warning: `Invalid labels for category "${category}": expected 1-${MAX_LABELS_PER_CATEGORY} labels.`,
-    };
-  }
-
-  const labels: string[] = [];
-  for (const rawLabel of rawLabels) {
-    if (typeof rawLabel !== 'string') {
-      return {
-        valid: false,
-        warning: `Invalid labels for category "${category}": all labels must be strings.`,
-      };
-    }
-
-    // Reject ASCII control characters (newlines, NUL, etc). A label like
-    // "foo\n## Compromised" passes length validation but breaks out of the
-    // inline-code span and injects markdown into the issue body.
-    if (hasControlChars(rawLabel)) {
-      return {
-        valid: false,
-        warning: `Invalid labels for category "${category}": labels cannot contain control characters.`,
-      };
-    }
-
-    const label = rawLabel.trim();
-    if (!label || label.length > MAX_LABEL_LENGTH) {
-      return {
-        valid: false,
-        warning: `Invalid labels for category "${category}": labels must be 1-${MAX_LABEL_LENGTH} characters.`,
-      };
-    }
-    labels.push(label);
-  }
-
-  return { valid: true, labels: uniqueLabels(labels) };
-}
-
-function uniqueLabels(labels: string[]): string[] {
-  return Array.from(new Set(labels));
-}
-
 function hasControlChars(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
@@ -700,24 +413,12 @@ function hasControlChars(value: string): boolean {
   return false;
 }
 
-function sameLabels(left: string[], right: string[]): boolean {
-  return left.length === right.length && left.every((label, index) => label === right[index]);
-}
-
 function isFeedbackCategory(value: unknown): value is FeedbackCategory {
   return typeof value === 'string' && CATEGORY_KEYS.includes(value as FeedbackCategory);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function formatLabelList(labels: string[]): string {
-  return labels.map(label => `\`${safeInlineCode(label)}\``).join(', ');
-}
-
-function safeInlineCode(value: string): string {
-  return value.replace(/[`\\]/g, '');
 }
 
 function base64ToBytes(base64: string): Uint8Array {
@@ -735,14 +436,9 @@ function hasPngSignature(bytes: Uint8Array): boolean {
 }
 
 /**
- * Format the issue body with markdown
+ * Format the ClickUp task description with markdown.
  */
-function formatIssueBody(
-  payload: FeedbackPayload,
-  screenshotDataUrl?: string,
-  uploadedAttachments: UploadedAttachment[] = [],
-  labelWarnings: string[] = []
-): string {
+function formatTaskDescription(payload: FeedbackPayload): string {
   const sections: string[] = [];
 
   // Submitter info (if provided)
@@ -766,37 +462,11 @@ function formatIssueBody(
     sections.push('');
   }
 
-  // Screenshot - embedded as base64 data URL
-  if (screenshotDataUrl) {
-    sections.push('## Screenshot');
-    sections.push(`![Screenshot](${screenshotDataUrl})`);
-    if (payload.metadata.elementSelector) {
-      sections.push('');
-      sections.push(
-        `_Selected element is indicated by the rounded highlight border (${formatMarkdownInlineCode(getSelectedElementHighlightColor(payload))})._`
-      );
-    }
-    sections.push('');
-  }
-
-  if (uploadedAttachments.length > 0) {
+  if (payload.screenshot || (payload.attachments?.length ?? 0) > 0) {
     sections.push('## Attachments');
-    for (const attachment of uploadedAttachments) {
-      const safeName = normalizeMarkdownValue(attachment.name);
-      if (attachment.type.startsWith('image/')) {
-        sections.push(`![${safeName}](${attachment.url})`);
-      } else {
-        sections.push(`- [${safeName}](${attachment.url})`);
-      }
-    }
-    sections.push('');
-  }
-
-  if (labelWarnings.length > 0) {
-    sections.push('## Label mapping warning');
-    for (const warning of labelWarnings) {
-      sections.push(`- ${warning}`);
-    }
+    sections.push(
+      'BugDrop attempted to attach the screenshot and any uploaded files to this task immediately after creating it. If one is missing, its upload failed after the task was created.'
+    );
     sections.push('');
   }
 
@@ -857,15 +527,9 @@ function formatIssueBody(
   sections.push('</details>');
   sections.push('');
   sections.push('---');
-  sections.push('*Submitted via [BugDrop](https://github.com/mean-weasel/bugdrop)*');
+  sections.push('*Submitted via BugDrop*');
 
   return sections.join('\n');
-}
-
-function getSelectedElementHighlightColor(payload: FeedbackPayload): string {
-  const color = payload.metadata.selectedElementHighlightColor;
-  if (!color || hasControlChars(color)) return resolveAccentColor();
-  return normalizeMarkdownValue(color) || resolveAccentColor();
 }
 
 function formatMarkdownTableCode(value: string): string {
@@ -877,17 +541,6 @@ function formatMarkdownTableCode(value: string): string {
   const longestBacktickRun = Math.max(...tableSafeValue.match(/`+/g)!.map(match => match.length));
   const fence = '`'.repeat(longestBacktickRun + 1);
   return `${fence} ${tableSafeValue} ${fence}`;
-}
-
-function formatMarkdownInlineCode(value: string): string {
-  const inlineSafeValue = normalizeMarkdownValue(value);
-  if (!inlineSafeValue.includes('`')) {
-    return `\`${inlineSafeValue}\``;
-  }
-
-  const longestBacktickRun = Math.max(...inlineSafeValue.match(/`+/g)!.map(match => match.length));
-  const fence = '`'.repeat(longestBacktickRun + 1);
-  return `${fence} ${inlineSafeValue} ${fence}`;
 }
 
 function formatConsoleLogsSection(entries: ConsoleLogEntry[] | undefined): string | null {
