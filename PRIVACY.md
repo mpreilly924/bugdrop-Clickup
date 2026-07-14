@@ -2,7 +2,7 @@
 
 **Last updated:** February 2025
 
-BugDrop is an open-source feedback widget that creates GitHub Issues with screenshots. This policy explains what data is collected and how it is used.
+BugDrop is an open-source feedback widget that creates ClickUp tasks with screenshots. This policy explains what data is collected and how it is used.
 
 ## What BugDrop Collects
 
@@ -23,7 +23,7 @@ When a user submits feedback through the BugDrop widget, the following data is c
 
 ## Where Data Goes
 
-All submitted feedback is sent to the **GitHub API** and created as a GitHub Issue in the repository configured by the site owner. Screenshots are stored in the repository's `.bugdrop/` directory on the `bugdrop-screenshots` branch. The BugDrop Cloudflare Worker acts only as a pass-through to authenticate with GitHub — it does not store any submitted data.
+All submitted feedback is sent to the **ClickUp API** and created as a task in the List configured by the site owner. Screenshots and other file attachments are uploaded directly to that ClickUp task. The BugDrop Cloudflare Worker acts only as a pass-through to authenticate with ClickUp — it does not store any submitted data.
 
 Feedback and screenshots are unauthenticated user-generated content. The hosted service applies rate limits, size limits, and PNG screenshot validation, but it does not provide email-grade spam or malware filtering.
 

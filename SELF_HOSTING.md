@@ -1,26 +1,23 @@
 # Self-Hosting Guide
 
-Run your own instance of BugDrop with your own GitHub App.
+Run your own instance of BugDrop with your own ClickUp destination.
 
 ## Prerequisites
 
 - Node.js 22+
 - Cloudflare account (free tier works)
-- GitHub account
+- A ClickUp account with a List you want BugDrop tasks to land in
 
-## 1. Create a GitHub App
+## 1. Get a ClickUp API Token and List ID
 
-1. Go to [github.com/settings/apps/new](https://github.com/settings/apps/new)
-2. Configure:
-   - **Name**: Choose a unique name (becomes your app's URL slug)
-   - **Homepage URL**: Your worker URL (e.g., `https://bugdrop.you.workers.dev`)
-   - **Webhook**: Uncheck "Active" (not needed)
-3. Set permissions:
-   - **Repository > Issues**: Read & Write
-   - **Repository > Contents**: Read & Write
-4. Click "Create GitHub App"
-5. Note the **App ID** (shown at top)
-6. Scroll down and click **"Generate a private key"** (downloads a .pem file)
+1. Log into ClickUp
+2. Click your avatar (bottom left) → **Settings** → **Apps**
+3. Under **API Token**, click **Generate** (or **Regenerate** if one already exists)
+4. Copy the token — it starts with `pk_`
+5. Open the List where BugDrop tasks should be created and copy its **List ID**:
+   - The ID is the numeric segment in the URL, e.g.
+     `https://app.clickup.com/9012345/v/li/901234567` → List ID is `901234567`
+   - Or right-click the List in the sidebar → **Copy link**, then take the trailing ID
 
 ## 2. Clone, Install, and Configure
 
@@ -34,41 +31,14 @@ make install
 cp .dev.vars.example .dev.vars
 ```
 
-Edit `.dev.vars` with your GitHub App credentials:
+Edit `.dev.vars` with your ClickUp credentials:
 
 ```bash
-GITHUB_APP_ID=123456
-GITHUB_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----
-...your key content...
------END RSA PRIVATE KEY-----"
+CLICKUP_API_TOKEN=pk_your_token_here
+CLICKUP_LIST_ID=901234567
 ```
 
-Next, keep local configuration in ignored files so your fork does not accumulate noisy diffs.
-
-In `.dev.vars`, uncomment and set your GitHub App slug:
-
-```bash
-GITHUB_APP_NAME=your-app-name
-```
-
-The committed `wrangler.toml` contains the upstream development defaults used by this repository. For local development, prefer `.dev.vars` overrides instead of editing `wrangler.toml`.
-
-If you want the local test pages under `/test/` to submit to a repository where your GitHub App is installed, copy the local test config example:
-
-```bash
-cp public/test/local-config.example.js public/test/local-config.js
-```
-
-Then edit `public/test/local-config.js`:
-
-```js
-window.BugDropTestConfig = {
-  ...(window.BugDropTestConfig || {}),
-  repo: 'your-org/your-repo',
-};
-```
-
-`public/test/local-config.js` is ignored by git. Without it, test pages keep using the upstream test repository `mean-weasel/bugdrop-widget-test`, which is what CI expects.
+Keep local configuration in `.dev.vars` (git-ignored) rather than editing the committed `wrangler.toml`, so your fork doesn't accumulate noisy diffs. The committed `wrangler.toml` contains the upstream development defaults used by this repository.
 
 ## 3. Build the Widget
 
@@ -89,11 +59,9 @@ Visit http://localhost:8787/test/ to try the widget.
 
 ## 5. Set Up Rate Limiting (Optional)
 
-Rate limiting prevents spam and protects GitHub API quotas. It uses Cloudflare KV for distributed storage.
+Rate limiting slows down spam and abuse. It uses Cloudflare KV for distributed, per-IP storage.
 
-> **Important:** The `[[kv_namespaces]]` IDs in `wrangler.toml` belong to the upstream deployment and will not work for your account.
-
-For local development, you can leave rate limiting unconfigured. BugDrop disables rate limiting when no `RATE_LIMIT` binding is present.
+For local development, you can leave rate limiting unconfigured. BugDrop disables rate limiting when no `RATE_LIMIT` binding is present or when `ENVIRONMENT` is `development`.
 
 For production, create your own KV namespaces and update your deployment configuration with the IDs from Wrangler. Do not reuse the upstream IDs committed in this repository.
 
@@ -112,12 +80,11 @@ id = "<your-production-id>"
 preview_id = "<your-preview-id>"
 ```
 
-**Default limits:**
+**Default limit:**
 
-- 20 requests per 15 minutes per IP
-- 50 requests per hour per repository
+- 20 requests per 15 minutes per IP, applied to `/api/feedback`
 
-To customize limits, edit `src/middleware/rateLimit.ts` and the middleware config in `src/routes/api.ts`.
+To customize the limit, edit `src/middleware/rateLimit.ts` and the middleware config in `src/routes/api.ts`.
 
 > **Note:** If you skip this step, rate limiting is disabled but the app still works.
 
@@ -127,14 +94,15 @@ To customize limits, edit `src/middleware/rateLimit.ts` and the middleware confi
 
 ```bash
 # Set production secrets
-wrangler secret put GITHUB_APP_ID
-wrangler secret put GITHUB_PRIVATE_KEY
+wrangler secret put CLICKUP_API_TOKEN
 # Optional: require signed host-app auth tokens before accepting feedback
 wrangler secret put AUTH_TOKEN_SECRET
 
 # Deploy
 make deploy
 ```
+
+Set `CLICKUP_LIST_ID` in `wrangler.toml` under `[vars]` (it is not a secret, just a destination ID).
 
 ### Auto-Deploy via GitHub Releases
 
@@ -164,64 +132,38 @@ The CI workflow automatically deploys to Cloudflare when you publish a GitHub Re
 
 The release tag (e.g., `v1.2.0`) becomes the version number for the widget files.
 
+## 7. Add the Widget to Your Site
+
+```html
+<script src="https://bugdrop.your-subdomain.workers.dev/widget.js"></script>
+```
+
+BugDrop no longer needs a `data-repo` attribute — every submission goes to the single ClickUp List configured on the Worker (`CLICKUP_LIST_ID`). If you want to give a local browser a stable identity (e.g. for your own analytics), set `data-project`; it defaults to the page's host.
+
 ## Configuration
 
 ### Environment Variables
 
 | Variable                        | Required | Description                                                                                   |
 | ------------------------------- | -------- | --------------------------------------------------------------------------------------------- |
-| `GITHUB_APP_ID`                 | Yes      | Your GitHub App's numeric ID                                                                  |
-| `GITHUB_PRIVATE_KEY`            | Yes      | Private key from GitHub App settings                                                          |
+| `CLICKUP_API_TOKEN`             | Yes      | ClickUp personal API token (starts with `pk_`)                                                |
+| `CLICKUP_LIST_ID`               | Yes      | Destination List ID for BugDrop tasks                                                         |
 | `ENVIRONMENT`                   | No       | `development` disables rate limiting; `production` enables all checks                         |
 | `ALLOWED_ORIGINS`               | No       | Comma-separated allowed domains (default: `*`)                                                |
-| `GITHUB_APP_NAME`               | No       | Your app's URL slug for install links                                                         |
 | `MAX_SCREENSHOT_SIZE_MB`        | No       | Max screenshot size in MB (default: `5`)                                                      |
-| `CATEGORY_LABELS`               | No       | JSON mapping from repos/categories to GitHub labels                                           |
-| `ALLOW_CLIENT_CATEGORY_LABELS`  | No       | Set to `true` to trust `data-category-labels` from your own pages                             |
 | `ROOT_REDIRECT_URL`             | No       | Landing page URL for `/` redirects (default: `https://bugdrop.dev`)                           |
 | `AUTH_TOKEN_SECRET`             | No       | HMAC secret that requires signed host-app tokens for `/feedback`                              |
 | `AUTH_TOKEN_ADDITIONAL_SECRETS` | No       | Comma/newline-separated extra HMAC secrets accepted during rotation or multi-app self-hosting |
 | `AUTH_TOKEN_AUDIENCE`           | No       | Expected token `aud` claim, usually your BugDrop worker hostname                              |
 | `AUTH_TOKEN_ISSUER`             | No       | Expected token `iss` claim, usually your app hostname                                         |
-| `AUTH_TOKEN_REQUIRED_FOR_CHECK` | No       | Set to `true` to require auth tokens for `/check/:owner/:repo` too                            |
+| `AUTH_TOKEN_REQUIRED_FOR_CHECK` | No       | Set to `true` to require auth tokens for `/check` too                                         |
 | `RATE_LIMIT`                    | No       | KV namespace binding for rate limiting (see section 5)                                        |
 
-### Custom Category Labels
-
-For authoritative mappings, configure labels on the worker. Two JSON shapes are supported.
-
-**Flat** — applies to every repo your worker serves:
-
-```toml
-[vars]
-CATEGORY_LABELS = '{"bug":["defect","frontend"],"feature":"product-feedback","question":"support"}'
-```
-
-**Per-repo** with optional `"*"` wildcard fallback:
-
-```toml
-[vars]
-CATEGORY_LABELS = '{"owner/repo":{"bug":["defect","frontend"]},"*":{"bug":"triage"}}'
-```
-
-The shape is detected automatically: top-level keys containing `/` or equal to `*` are treated as repos; otherwise the object is treated as flat.
-
-Validation rules:
-
-- Recognized categories: `bug`, `feature`, `question`. Unknown keys are dropped with a warning.
-- Each category accepts a single label or an array of **1-5** labels.
-- Each label must be **1-50 characters** after trimming (matching GitHub's label-name limit). Whitespace-only labels and labels containing control characters (newlines, NUL, etc.) are rejected.
-- Every issue also receives the `bugdrop` label automatically.
-
-Self-hosted deployments can also opt into script-tag mappings by setting `ALLOW_CLIENT_CATEGORY_LABELS = "true"` (case-sensitive — values like `"True"`, `"1"`, or `"yes"` keep the gate closed) and using `data-category-labels` on pages you control. Only enable this when your worker is locked down to trusted origins.
-
-When both are set, `CATEGORY_LABELS` takes precedence: the worker uses the server-side mapping and ignores `data-category-labels`. If `CATEGORY_LABELS` is set but unusable (malformed JSON, wrong shape, or a per-repo map with no entry for the current repo and no `"*"` fallback), the worker falls back to default GitHub labels and surfaces a warning in the issue body — it does **not** fall through to the browser-supplied mapping. This keeps a typo in your env config from silently handing label control back to the page.
-
-Warnings emitted during label resolution are also written to worker logs (visible via `wrangler tail`) and returned in the `/feedback` success response under `labelMappingWarnings` so monitoring can detect misconfigurations without parsing issue bodies.
+Every task BugDrop creates is tagged `bugdrop` plus the feedback category (`bug`, `feature`, or `question`) — use ClickUp's tag filters or automations if you want different routing per category. There is currently no server-side mapping from category to a custom ClickUp field or status.
 
 ### Locking Down Allowed Origins (Recommended)
 
-> **Security:** When self-hosting, you should always set `ALLOWED_ORIGINS` to only the domains where you embed the widget. The default `"*"` allows any website to submit requests to your worker — meaning anyone who discovers your worker URL could create issues on repos where your app is installed (subject to rate limits).
+> **Security:** When self-hosting, you should always set `ALLOWED_ORIGINS` to only the domains where you embed the widget. The default `"*"` allows any website to submit requests to your worker — meaning anyone who discovers your worker URL could create tasks in your ClickUp List (subject to rate limits).
 
 For self-hosted deployments, restrict origins to your known domains:
 
@@ -229,7 +171,7 @@ For self-hosted deployments, restrict origins to your known domains:
 [vars]
 ENVIRONMENT = "production"
 ALLOWED_ORIGINS = "https://mysite.com,https://app.mysite.com"
-GITHUB_APP_NAME = "my-bugdrop-app"
+CLICKUP_LIST_ID = "901234567"
 ```
 
 Only list the exact origins (scheme + host) of sites where you embed the BugDrop widget. The worker validates the `Origin` header on incoming requests and rejects any not in this list.
@@ -268,7 +210,7 @@ AUTH_TOKEN_ISSUER = "app.yourdomain.com"
 AUTH_TOKEN_REQUIRED_FOR_CHECK = "true"
 ```
 
-When `AUTH_TOKEN_SECRET` or `AUTH_TOKEN_ADDITIONAL_SECRETS` is set, `/feedback` requires an `Authorization: Bearer <token>` header. `/check/:owner/:repo` remains public by default for backwards compatibility; set `AUTH_TOKEN_REQUIRED_FOR_CHECK = "true"` if even installation status should be visible only to authenticated users.
+When `AUTH_TOKEN_SECRET` or `AUTH_TOKEN_ADDITIONAL_SECRETS` is set, `/feedback` requires an `Authorization: Bearer <token>` header. `/check` remains public by default for backwards compatibility; set `AUTH_TOKEN_REQUIRED_FOR_CHECK = "true"` if even destination-configured status should be visible only to authenticated users.
 
 Use `AUTH_TOKEN_ADDITIONAL_SECRETS` when rotating tokens or when one self-hosted worker is shared by multiple authenticated host apps. Keep the existing `AUTH_TOKEN_SECRET` as the primary secret, then add comma- or newline-separated additional secrets so newly migrated apps can verify without breaking apps that still sign with the primary value.
 
@@ -288,7 +230,6 @@ Then point the widget at that global function:
 ```html
 <script
   src="https://bugdrop.your-subdomain.workers.dev/widget.js"
-  data-repo="owner/repo"
   data-auth-token-provider="getBugDropToken"
 ></script>
 ```
@@ -300,14 +241,14 @@ Tokens use a compact HMAC-SHA256 format with a `bd1` prefix. The payload is JSON
   "iss": "app.yourdomain.com",
   "aud": "bugdrop.your-subdomain.workers.dev",
   "sub": "user_123",
-  "repo": "owner/repo",
+  "repo": "901234567",
   "iat": 1779700000,
   "exp": 1779700300,
   "jti": "unique-token-id"
 }
 ```
 
-Use short expirations, usually 5 minutes or less. The `repo` claim must exactly match the widget's `data-repo` value. `sub` and `jti` are not persisted by BugDrop today, but including them gives you useful audit material in your own token issuer logs.
+Use short expirations, usually 5 minutes or less. Despite the field name (`repo`, kept for backwards compatibility with the token format), this claim must exactly match your worker's `CLICKUP_LIST_ID` value. `sub` and `jti` are not persisted by BugDrop today, but including them gives you useful audit material in your own token issuer logs.
 
 ### Root URL Redirect
 
@@ -347,7 +288,7 @@ make deploy      # Deploy to Cloudflare
 src/
 ├── index.ts           # Worker entry
 ├── routes/api.ts      # API endpoints
-├── lib/github.ts      # GitHub API
+├── lib/clickup.ts     # ClickUp API client
 └── widget/            # Client widget
     ├── index.ts       # Entry point
     ├── ui.ts          # UI + theming
@@ -359,6 +300,6 @@ src/
 ## Tech Stack
 
 - **Runtime**: Cloudflare Workers + Hono
-- **Auth**: GitHub App (installation tokens)
+- **Ticket destination**: ClickUp API (personal API token)
 - **Widget**: TypeScript IIFE in Shadow DOM
 - **Testing**: Vitest + Playwright
