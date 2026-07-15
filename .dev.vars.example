@@ -7,8 +7,9 @@
 
 # Step 1: Get a personal API token
 #   - Log into ClickUp
-#   - Click your avatar (bottom left) → Settings → Apps
-#   - Under "API Token", click "Generate" (or "Regenerate" if one already exists)
+#   - Click your avatar (bottom left) → Settings
+#   - In the left sidebar, under "Integrations & ClickApps", click "ClickUp API"
+#   - Click "Generate" (or "Regenerate" if one already exists)
 #   - Copy the token — it starts with "pk_"
 CLICKUP_API_TOKEN=pk_your_token_here
 

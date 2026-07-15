@@ -11,13 +11,29 @@ Run your own instance of BugDrop with your own ClickUp destination.
 ## 1. Get a ClickUp API Token and List ID
 
 1. Log into ClickUp
-2. Click your avatar (bottom left) → **Settings** → **Apps**
-3. Under **API Token**, click **Generate** (or **Regenerate** if one already exists)
-4. Copy the token — it starts with `pk_`
-5. Open the List where BugDrop tasks should be created and copy its **List ID**:
+2. Click your avatar (bottom left) → **Settings**
+3. In the left sidebar, under **Integrations & ClickApps**, click **ClickUp API**
+4. Click **Generate** (or **Regenerate** if one already exists)
+5. Copy the token — it starts with `pk_`
+6. Open the List where BugDrop tasks should be created and copy its **List ID**:
    - The ID is the numeric segment in the URL, e.g.
      `https://app.clickup.com/9012345/v/li/901234567` → List ID is `901234567`
    - Or right-click the List in the sidebar → **Copy link**, then take the trailing ID
+
+### Rotating the Token
+
+ClickUp has no built-in concept of a "service account" — every API token, personal or
+OAuth-authorized, belongs to a real member. If you're using your own personal token, plan for
+what happens when that person changes roles or leaves:
+
+1. Have the new token holder log into ClickUp and generate their own personal token (steps
+   above).
+2. Confirm they (or their account) still have access to the destination List.
+3. Run `wrangler secret put CLICKUP_API_TOKEN` again with the new token.
+
+That's the whole procedure — no code changes, no downtime beyond the few seconds it takes
+Cloudflare to roll out the new secret. `CLICKUP_LIST_ID` doesn't need to change since it isn't
+tied to any particular member.
 
 ## 2. Clone, Install, and Configure
 
@@ -92,17 +108,29 @@ To customize the limit, edit `src/middleware/rateLimit.ts` and the middleware co
 
 ### Manual Deploy
 
+If your fork is a **private** repo, the simplest path is to add `ALLOWED_ORIGINS` and
+`CLICKUP_LIST_ID` directly to `[env.production].vars` in `wrangler.toml` (neither is a secret —
+they're just a domain list and a destination ID) and commit them.
+
+If your fork is **public** and you'd rather not publish your internal domain names, set them as
+secrets instead — Cloudflare Workers reads `ALLOWED_ORIGINS`/`CLICKUP_LIST_ID` the same way
+whether they come from `[vars]` or a secret, so this needs no code changes:
+
 ```bash
-# Set production secrets
-wrangler secret put CLICKUP_API_TOKEN
+# Required
+wrangler secret put CLICKUP_API_TOKEN --env production
+wrangler secret put CLICKUP_LIST_ID --env production
+wrangler secret put ALLOWED_ORIGINS --env production
 # Optional: require signed host-app auth tokens before accepting feedback
-wrangler secret put AUTH_TOKEN_SECRET
+wrangler secret put AUTH_TOKEN_SECRET --env production
 
 # Deploy
-make deploy
+wrangler deploy --env production
 ```
 
-Set `CLICKUP_LIST_ID` in `wrangler.toml` under `[vars]` (it is not a secret, just a destination ID).
+(`make deploy` runs `wrangler deploy` with no `--env` flag, which uses the top-level config
+meant for the upstream project's own infrastructure — use the `wrangler deploy --env production`
+command above instead for a self-hosted deployment.)
 
 ### Auto-Deploy via GitHub Releases
 
@@ -174,7 +202,19 @@ ALLOWED_ORIGINS = "https://mysite.com,https://app.mysite.com"
 CLICKUP_LIST_ID = "901234567"
 ```
 
-Only list the exact origins (scheme + host) of sites where you embed the BugDrop widget. The worker validates the `Origin` header on incoming requests and rejects any not in this list.
+List the exact origins (scheme + host) of sites where you embed the BugDrop widget. The worker validates the `Origin` header on incoming requests and rejects any not in this list.
+
+If the widget is embedded across many subdomains of a domain you control (e.g. a growing set of per-site subdomains), use a wildcard-subdomain pattern instead of listing each one individually:
+
+```toml
+[vars]
+ALLOWED_ORIGINS = "https://*.mysite.com,https://app.mysite.com"
+```
+
+`https://*.mysite.com` matches any subdomain (`https://a.mysite.com`, `https://a.b.mysite.com`,
+...) but **not** the bare apex (`https://mysite.com`) — list the apex separately if it also
+embeds the widget. The scheme in the pattern must match exactly (a `https://*.mysite.com`
+pattern will not match `http://a.mysite.com`).
 
 > **Note:** `ALLOWED_ORIGINS` is a CORS-level check — it only blocks browser-based cross-origin requests. Direct API calls (curl, scripts) don't send an `Origin` header and bypass CORS entirely. Rate limiting (section 5) is your primary defense against non-browser abuse.
 
