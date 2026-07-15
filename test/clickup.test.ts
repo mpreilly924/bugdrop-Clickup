@@ -32,7 +32,7 @@ describe('ClickUp API client', () => {
     );
   });
 
-  it('uploads files with ClickUp’s attachment[] multipart field', async () => {
+  it('uploads files with ClickUp’s attachment multipart field', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -49,6 +49,11 @@ describe('ClickUp API client', () => {
     );
     expect(request.headers).toEqual(expect.objectContaining({ Authorization: 'pk_test' }));
     expect(request.body).toBeInstanceOf(FormData);
-    expect((request.body as FormData).get('attachment[]')).toBeInstanceOf(Blob);
+    const uploaded = (request.body as FormData).get('attachment');
+    // Must be a File (not a bare Blob) — ClickUp rejects the upload with
+    // "Incorrect filename!" (UPLOAD_002) if the filename isn't carried through.
+    expect(uploaded).toBeInstanceOf(File);
+    expect((uploaded as File).name).toBe('evidence.pdf');
+    expect((uploaded as File).type).toBe('application/pdf');
   });
 });
