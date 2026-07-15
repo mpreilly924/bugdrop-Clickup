@@ -49,8 +49,11 @@ export async function uploadTaskAttachment(
 ): Promise<void> {
   const bytes = dataUrlToBytes(attachment.dataUrl);
   const form = new FormData();
-  // ClickUp's v2 attachment endpoint expects files under the attachment[] field.
-  form.append('attachment[]', new Blob([bytes], { type: attachment.type }), attachment.name);
+  // ClickUp's v2 attachment endpoint expects files under a plain "attachment"
+  // field (repeat the field for multiple files) — per ClickUp's OpenAPI schema.
+  // Also use File (not Blob): a plain Blob risks losing its filename through
+  // Workers' multipart serialization, which ClickUp then rejects.
+  form.append('attachment', new File([bytes], attachment.name, { type: attachment.type }));
 
   const response = await fetch(`${CLICKUP_API}/task/${encodeURIComponent(taskId)}/attachment`, {
     method: 'POST',
