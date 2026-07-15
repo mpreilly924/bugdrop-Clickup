@@ -54,8 +54,8 @@ api.use('*', async (c, next) => {
       if (!origin) return '*';
       // Wildcard allows all
       if (originList.includes('*')) return origin;
-      // Check if origin is in whitelist
-      return originList.includes(origin) ? origin : null;
+      // Check if origin is in whitelist (exact match or wildcard-subdomain pattern)
+      return isOriginAllowed(origin, originList) ? origin : null;
     },
     allowMethods: ['GET', 'POST', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
@@ -63,6 +63,35 @@ api.use('*', async (c, next) => {
 
   return corsMiddleware(c, next);
 });
+
+const WILDCARD_ORIGIN_PATTERN = /^(https?):\/\/\*\.(.+)$/;
+
+/**
+ * Matches an origin against an ALLOWED_ORIGINS entry list. Entries are either
+ * exact origins (e.g. "https://mysite.com") or wildcard-subdomain patterns
+ * (e.g. "https://*.mysite.com", which matches any single- or multi-label
+ * subdomain but not the bare apex — list the apex separately if needed).
+ */
+function isOriginAllowed(origin: string, allowedList: string[]): boolean {
+  if (allowedList.includes(origin)) return true;
+
+  let originHost: string;
+  try {
+    originHost = new URL(origin).hostname;
+  } catch {
+    return false;
+  }
+
+  for (const pattern of allowedList) {
+    const match = pattern.match(WILDCARD_ORIGIN_PATTERN);
+    if (!match) continue;
+    const [, scheme, baseDomain] = match;
+    if (!origin.startsWith(`${scheme}://`)) continue;
+    if (originHost.endsWith(`.${baseDomain}`)) return true;
+  }
+
+  return false;
+}
 
 // Rate limit: 20 requests per 15 minutes per IP
 api.use(

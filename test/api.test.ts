@@ -151,3 +151,45 @@ describe('ClickUp feedback API', () => {
     await expect(response.json()).resolves.toEqual({ configured: true });
   });
 });
+
+describe('CORS wildcard subdomain matching', () => {
+  const wildcardEnv: Env = {
+    ...env,
+    ALLOWED_ORIGINS: 'https://*.example.com,https://example.org',
+  };
+
+  async function corsOrigin(origin: string): Promise<string | null> {
+    const response = await (
+      await api()
+    ).fetch(new Request('http://localhost/health', { headers: { Origin: origin } }), wildcardEnv);
+    return response.headers.get('Access-Control-Allow-Origin');
+  }
+
+  it('allows a subdomain matching the wildcard pattern', async () => {
+    expect(await corsOrigin('https://app.example.com')).toBe('https://app.example.com');
+  });
+
+  it('allows a multi-label subdomain', async () => {
+    expect(await corsOrigin('https://a.b.example.com')).toBe('https://a.b.example.com');
+  });
+
+  it('rejects the bare apex domain unless explicitly listed', async () => {
+    expect(await corsOrigin('https://example.com')).toBeNull();
+  });
+
+  it('rejects a mismatched scheme', async () => {
+    expect(await corsOrigin('http://app.example.com')).toBeNull();
+  });
+
+  it('rejects an unrelated domain', async () => {
+    expect(await corsOrigin('https://evil.com')).toBeNull();
+  });
+
+  it('rejects a lookalike domain that merely ends with the same suffix', async () => {
+    expect(await corsOrigin('https://notexample.com')).toBeNull();
+  });
+
+  it('still allows an exact-match origin listed alongside a wildcard', async () => {
+    expect(await corsOrigin('https://example.org')).toBe('https://example.org');
+  });
+});
