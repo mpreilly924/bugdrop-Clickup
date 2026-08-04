@@ -48,6 +48,13 @@ export function shouldRenderIssueLink(
 
 export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
   const pos = config.position === 'bottom-left' ? 'left: 0' : 'right: 0';
+  // The feedback panel slides out from the same edge the trigger button sits on.
+  const slideFromLeft = config.position === 'bottom-left';
+  const panelJustify = slideFromLeft ? 'flex-start' : 'flex-end';
+  const panelRadius = slideFromLeft
+    ? '0 var(--bd-radius-lg) var(--bd-radius-lg) 0'
+    : 'var(--bd-radius-lg) 0 0 var(--bd-radius-lg)';
+  const panelAnimation = slideFromLeft ? 'bd-slideInLeft' : 'bd-slideIn';
   const resolved = resolveTheme(config.theme);
 
   // Determine font settings
@@ -409,24 +416,32 @@ export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
       background: var(--bd-overlay-bg);
       z-index: 1000000;
       display: flex;
-      align-items: center;
-      justify-content: center;
+      align-items: stretch;
+      justify-content: ${panelJustify};
       animation: bd-fadeIn 0.2s ease;
     }
 
-    /* Modal */
+    /* The annotator needs real width to be usable, so it stays a centered,
+       floating dialog instead of the slide-out panel every other step uses. */
+    .bd-overlay:has(.bd-modal--annotator) {
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Modal (slide-out panel by default) */
     .bd-modal {
       background: var(--bd-bg-primary);
-      border-radius: var(--bd-radius-lg);
+      border-radius: ${panelRadius};
       border: var(--bd-border-style);
       box-shadow: var(--bd-shadow-lg), var(--bd-shadow-glow);
-      max-width: 600px;
-      width: 90%;
-      max-height: 90vh;
+      width: 420px;
+      max-width: 100vw;
+      height: 100%;
+      max-height: 100%;
       overflow: hidden;
       display: flex;
       flex-direction: column;
-      animation: bd-slideUp var(--bd-transition-slow);
+      animation: ${panelAnimation} var(--bd-transition-slow);
     }
 
     .bd-modal--positioned {
@@ -442,6 +457,10 @@ export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
     .bd-modal--annotator {
       width: min(96vw, 1100px);
       max-width: 1100px;
+      height: auto;
+      max-height: 90vh;
+      border-radius: var(--bd-radius-lg);
+      animation: bd-slideUp var(--bd-transition-slow);
     }
 
     /* Modal Header */
@@ -454,19 +473,24 @@ export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
       align-items: center;
       background: var(--bd-bg-primary);
       animation: bd-fadeIn 0.2s ease 0.05s both;
-      cursor: grab;
       user-select: none;
+    }
+
+    /* The slide-out panel is anchored to the edge and isn't draggable — only
+       the centered, floating annotator dialog supports repositioning. */
+    .bd-modal--annotator .bd-header {
+      cursor: grab;
       touch-action: none;
     }
 
     .bd-modal-drag-indicator {
+      display: none;
       position: absolute;
       top: 6px;
       left: 50%;
       transform: translateX(-50%);
       width: 28px;
       height: 10px;
-      display: grid;
       grid-template-columns: repeat(3, 4px);
       grid-auto-rows: 4px;
       gap: 3px 5px;
@@ -475,6 +499,10 @@ export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
       color: var(--bd-text-muted);
       opacity: 0.8;
       pointer-events: none;
+    }
+
+    .bd-modal--annotator .bd-modal-drag-indicator {
+      display: grid;
     }
 
     .bd-modal-drag-indicator span {
@@ -1091,6 +1119,11 @@ export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
       to { transform: translateX(0); opacity: 1; }
     }
 
+    @keyframes bd-slideInLeft {
+      from { transform: translateX(-100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
     @keyframes bd-pullTabSlideIn {
       from { transform: translateX(100%); opacity: 0; }
       to { transform: translateX(0); opacity: 1; }
@@ -1168,11 +1201,13 @@ export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
 
       .bd-overlay {
         align-items: flex-end;
+        justify-content: center;
       }
 
       .bd-modal {
         width: 100%;
         max-width: 100%;
+        height: auto;
         max-height: 95vh;
         border-radius: var(--bd-radius-lg) var(--bd-radius-lg) 0 0;
         animation: bd-slideUpMobile var(--bd-transition-slow);
@@ -1408,7 +1443,11 @@ export function createModal(
   `;
 
   container.appendChild(overlay);
-  attachModalDragBehavior(overlay);
+  // Only the centered, floating annotator dialog supports repositioning —
+  // the slide-out panel every other step uses is anchored to the edge.
+  if (modalClass.includes('bd-modal--annotator')) {
+    attachModalDragBehavior(overlay);
+  }
   return overlay;
 }
 
