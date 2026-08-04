@@ -49,6 +49,7 @@ That's it! Users can now click the bug button to submit feedback as ClickUp task
 | `data-position`                 | `bottom-right`, `bottom-left`                        | `bottom-right`        |
 | `data-color`                    | Accent color for buttons/highlights (e.g. `#FF6B35`) | `#14b8a6` (teal)      |
 | `data-label`                    | Any string                                           | localized label       |
+| `data-icon`                     | `http(s)` URL to an image/SVG, or `none` to hide     | 🐛 emoji              |
 | `data-button`                   | `true`, `false`                                      | `true`                |
 | `data-send-console-logs`        | `true`, `false`                                      | `false`               |
 | `data-element-context-max-area` | Viewport-area multiplier for Select Element context  | `0`                   |
