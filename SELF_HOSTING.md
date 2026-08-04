@@ -187,7 +187,7 @@ BugDrop no longer needs a `data-repo` attribute — every submission goes to the
 | `AUTH_TOKEN_REQUIRED_FOR_CHECK` | No       | Set to `true` to require auth tokens for `/check` too                                         |
 | `RATE_LIMIT`                    | No       | KV namespace binding for rate limiting (see section 5)                                        |
 
-Every task BugDrop creates is tagged `bugdrop` plus the feedback category (`bug`, `feature`, or `question`) — use ClickUp's tag filters or automations if you want different routing per category. There is currently no server-side mapping from category to a custom ClickUp field or status.
+Every task BugDrop creates is tagged `bugdrop`, the feedback category (`bug`, `feature`, or `question`), and — when the submitting page's URL parses into a valid hostname — that hostname (e.g. `chargeback.example.com`). The task title is also prefixed with the hostname (e.g. `[chargeback.example.com] Checkout button fails`). This is aimed at self-hosters routing feedback from many sites into a single shared List: use ClickUp's tag filters, saved views, or automations to group or route tasks by source site. There is currently no server-side mapping from category to a custom ClickUp field or status.
 
 ### Locking Down Allowed Origins (Recommended)
 

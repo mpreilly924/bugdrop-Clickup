@@ -13,7 +13,7 @@ describe('ClickUp API client', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(
-      createTask('pk_test', '901234', 'Broken checkout', 'Details', 'bug')
+      createTask('pk_test', '901234', 'Broken checkout', 'Details', ['bugdrop', 'bug'])
     ).resolves.toEqual({
       id: 'abc123',
       url: 'https://app.clickup.com/t/abc123',
