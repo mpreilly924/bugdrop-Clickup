@@ -3268,7 +3268,7 @@ test.describe('Custom Icon', () => {
     expect(executed).toEqual({ label: false, icon: false });
   });
 
-  test('broken icon URL falls back to default emoji', async ({ page }) => {
+  test('broken icon URL hides the icon instead of showing a fallback', async ({ page }) => {
     // Navigate to a page and inject widget with broken icon URL
     await page.goto('/test/icon-custom.html');
     await page.locator('#bugdrop-host').locator('css=.bd-trigger').waitFor();
@@ -3287,27 +3287,17 @@ test.describe('Custom Icon', () => {
     });
 
     const triggerIcon = page.locator('#bugdrop-host').locator('css=.bd-trigger-icon');
-    await expect(triggerIcon).toBeVisible({ timeout: 5000 });
-
-    // The img should be hidden (display:none from onerror) and fallback emoji visible
-    const fallbackText = await triggerIcon.textContent();
-    expect(fallbackText).toContain('🐛');
+    // The icon element is hidden entirely on image load error — no emoji fallback.
+    await expect(triggerIcon).toBeHidden({ timeout: 5000 });
   });
 
-  test('default emoji shows when no data-icon is set', async ({ page }) => {
+  test('no icon shows by default when data-icon is not set', async ({ page }) => {
     await page.goto('/test/index.html');
     await page.locator('#bugdrop-host').locator('css=.bd-trigger').waitFor();
 
+    // The trigger button should be text-only — no icon element at all.
     const triggerIcon = page.locator('#bugdrop-host').locator('css=.bd-trigger-icon');
-    await expect(triggerIcon).toBeVisible({ timeout: 5000 });
-
-    // Should NOT have an img element
-    const img = page.locator('#bugdrop-host').locator('css=.bd-trigger-icon img');
-    await expect(img).not.toBeAttached();
-
-    // Should have the default emoji
-    const text = await triggerIcon.textContent();
-    expect(text).toContain('🐛');
+    await expect(triggerIcon).not.toBeAttached();
   });
 });
 

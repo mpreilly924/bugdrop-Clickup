@@ -442,25 +442,18 @@ function appendTriggerContent(trigger: HTMLElement, config: WidgetConfig): void 
     trigger.appendChild(createTriggerDragHandle());
   }
 
-  if (config.iconUrl !== 'none') {
+  // No icon by default — set data-icon to an http(s) image/SVG URL to opt back in.
+  if (config.iconUrl && config.iconUrl !== 'none') {
     const icon = document.createElement('span');
     icon.className = 'bd-trigger-icon';
 
-    if (config.iconUrl) {
-      const image = document.createElement('img');
-      image.src = config.iconUrl;
-      image.alt = '';
-      const fallback = document.createElement('span');
-      fallback.textContent = '🐛';
-      fallback.style.display = 'none';
-      image.addEventListener('error', () => {
-        image.style.display = 'none';
-        fallback.style.display = '';
-      });
-      icon.append(image, fallback);
-    } else {
-      icon.textContent = '🐛';
-    }
+    const image = document.createElement('img');
+    image.src = config.iconUrl;
+    image.alt = '';
+    image.addEventListener('error', () => {
+      icon.style.display = 'none';
+    });
+    icon.appendChild(image);
 
     trigger.appendChild(icon);
   }
