@@ -68,7 +68,7 @@
     "wrangler": "^4.92.0"
   },
   "dependencies": {
-    "hono": "^4.12.25",
+    "hono": "^4.12.34",
     "html-to-image": "^1.11.13"
   }
 }
