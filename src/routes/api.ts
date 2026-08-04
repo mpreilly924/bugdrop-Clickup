@@ -168,12 +168,15 @@ api.post('/feedback', async c => {
     }
 
     const category = isFeedbackCategory(payload.category) ? payload.category : 'bug';
+    const sourceHostname = extractHostname(payload.metadata?.url);
+    const taskName = sourceHostname ? `[${sourceHostname}] ${payload.title}` : payload.title;
+    const tags = ['bugdrop', category, ...(sourceHostname ? [sourceHostname] : [])];
     const task = await createTask(
       c.env.CLICKUP_API_TOKEN,
       c.env.CLICKUP_LIST_ID,
-      payload.title,
+      taskName,
       formatTaskDescription(payload),
-      category
+      tags
     );
 
     const attachments = [
@@ -444,6 +447,20 @@ function hasControlChars(value: string): boolean {
 
 function isFeedbackCategory(value: unknown): value is FeedbackCategory {
   return typeof value === 'string' && CATEGORY_KEYS.includes(value as FeedbackCategory);
+}
+
+/**
+ * Used to tag and title-prefix tasks with their source site when one ClickUp
+ * List is shared across multiple sites. Returns null for missing/malformed
+ * URLs (metadata.url is client-supplied) rather than failing the submission.
+ */
+function extractHostname(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname || null;
+  } catch {
+    return null;
+  }
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

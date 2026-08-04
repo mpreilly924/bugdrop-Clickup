@@ -75,9 +75,9 @@ describe('ClickUp feedback API', () => {
     expect(mockCreateTask).toHaveBeenCalledWith(
       'pk_test',
       '901234',
-      payload.title,
+      '[example.test] Checkout button fails',
       expect.stringContaining('## Description'),
-      'bug'
+      ['bugdrop', 'bug', 'example.test']
     );
     expect(mockUploadTaskAttachment).toHaveBeenNthCalledWith(
       1,
@@ -90,6 +90,33 @@ describe('ClickUp feedback API', () => {
       'pk_test',
       'abc123',
       payload.attachments[0]
+    );
+  });
+
+  it('falls back to an untagged, unprefixed task when the page URL is malformed', async () => {
+    const response = await (
+      await api()
+    ).fetch(
+      new Request('http://localhost/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          screenshot: undefined,
+          attachments: [],
+          metadata: { ...payload.metadata, url: 'not-a-valid-url' },
+        }),
+      }),
+      env
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockCreateTask).toHaveBeenCalledWith(
+      'pk_test',
+      '901234',
+      payload.title,
+      expect.stringContaining('## Description'),
+      ['bugdrop', 'bug']
     );
   });
 

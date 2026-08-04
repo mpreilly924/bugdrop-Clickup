@@ -150,6 +150,11 @@ export function injectStyles(shadow: ShadowRoot, config: WidgetConfig) {
       font-family: var(--bd-font);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      /* Baseline reset: color is an inherited property that crosses the Shadow
+         DOM boundary (unlike selectors), so without this, any element here
+         that doesn't set its own color silently inherits the host page's text
+         color instead of a BugDrop theme color. */
+      color: var(--bd-text-primary);
     }
 
     * {

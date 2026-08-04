@@ -19,7 +19,7 @@ export async function createTask(
   listId: string,
   name: string,
   markdownContent: string,
-  category: string
+  tags: string[]
 ): Promise<ClickUpTask> {
   const response = await fetch(`${CLICKUP_API}/list/${encodeURIComponent(listId)}/task`, {
     method: 'POST',
@@ -27,7 +27,7 @@ export async function createTask(
     body: JSON.stringify({
       name,
       markdown_content: markdownContent,
-      tags: ['bugdrop', category],
+      tags,
     }),
   });
 
